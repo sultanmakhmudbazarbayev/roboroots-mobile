@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:roboroots/api/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:roboroots/screens/auth/sign_up_screen.dart';
 import 'package:roboroots/screens/home/home_screen.dart';
@@ -16,40 +17,23 @@ class _SignInPageState extends State<SignInPage> {
   bool _obscurePassword = true;
   bool _rememberMe = false;
 
-  // Function to perform login: makes the POST request, saves the token, and navigates to HomePage.
   Future<void> _signIn() async {
     final String email = _emailController.text.trim();
     final String password = _passwordController.text;
-    final url = Uri.parse('https://robo.responcy.net/auth/login');
 
     try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"email": email, "password": password}),
+      final success = await AuthService().login(
+        email: email,
+        password: password,
       );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final token = data['token'];
-        print('Received token: $token');
-
-        // Save the token using SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('jwt_token', token);
-
-        // Navigate to HomePage
+      if (success) {
         _navigateToHomePage();
-      } else {
-        // If the server returns an error response
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Invalid email or password')),
-        );
       }
     } catch (e) {
-      print('Error during sign in: $e');
+      print('Login error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('An error occurred. Please try again.')),
+        SnackBar(content: Text('Invalid email or password')),
       );
     }
   }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:roboroots/screens/home/activity/activityPage.dart';
 import 'package:roboroots/screens/home/certificates/certificatesPage.dart';
-import 'package:roboroots/screens/home/lessons/coursePage.dart';
+import 'package:roboroots/screens/home/lessons/course_page.dart';
 import 'package:roboroots/screens/home/profile/profile_screen.dart';
 import 'package:roboroots/screens/home/projects/projectsPage.dart';
 import 'package:roboroots/screens/home/payment/paymentsPage.dart';
+import 'package:roboroots/helpers/strike_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeContent extends StatefulWidget {
   const HomeContent({Key? key}) : super(key: key);
@@ -18,7 +20,6 @@ class _HomeContentState extends State<HomeContent> {
   final FocusNode _focusNode = FocusNode();
   bool _showSuggestions = false;
 
-  // Base list of search options.
   final List<Map<String, dynamic>> _searchOptions = [
     {"title": "Lessons", "icon": Icons.school},
     {"title": "Projects", "icon": Icons.work},
@@ -27,27 +28,35 @@ class _HomeContentState extends State<HomeContent> {
     {"title": "Payment", "icon": Icons.payment},
   ];
 
-  // Filtered list to display based on user input.
   List<Map<String, dynamic>> _filteredOptions = [];
 
   @override
   void initState() {
     super.initState();
-
-    // Listen for focus changes.
     _focusNode.addListener(_handleFocusChange);
-
-    // Listen for text changes, trigger re-filtering.
     _searchController.addListener(_handleSearchChanged);
+
+    debugResetStrikeAnimation();
+
+    // ✅ Strike animation on open
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      StrikeManager.showStrikeIfNeeded((strikeDays) {
+        _showStrikeDialog(context, strikeDays);
+      });
+    });
   }
 
   void _handleFocusChange() {
-    // If user has focus and typed something, show suggestions.
     if (_focusNode.hasFocus && _searchController.text.trim().isNotEmpty) {
       setState(() => _showSuggestions = true);
     } else {
       setState(() => _showSuggestions = false);
     }
+  }
+
+  void debugResetStrikeAnimation() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('strike_animation_last_shown');
   }
 
   void _handleSearchChanged() {
@@ -58,7 +67,6 @@ class _HomeContentState extends State<HomeContent> {
         _showSuggestions = false;
       });
     } else {
-      // Filter options whose title contains the query (case-insensitive).
       final results = _searchOptions.where((option) {
         final title = option['title'].toString().toLowerCase();
         return title.contains(query);
@@ -66,7 +74,6 @@ class _HomeContentState extends State<HomeContent> {
 
       setState(() {
         _filteredOptions = results;
-        // Show suggestions if there's at least one result and field is in focus.
         _showSuggestions = _focusNode.hasFocus && results.isNotEmpty;
       });
     }
@@ -81,66 +88,74 @@ class _HomeContentState extends State<HomeContent> {
     super.dispose();
   }
 
-  // Navigation based on selected option.
   void _navigateToOption(String option) {
     if (option == "Lessons") {
       Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CoursesPage()),
-      );
+          context, MaterialPageRoute(builder: (_) => const CoursesPage()));
     } else if (option == "Projects") {
       Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ProjectsPage()),
-      );
+          context, MaterialPageRoute(builder: (_) => const ProjectsPage()));
     } else if (option == "Certificates") {
       Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const CertificatesPage()),
-      );
+          context, MaterialPageRoute(builder: (_) => const CertificatesPage()));
     } else if (option == "Activity") {
       Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ActivityPage()),
-      );
+          context, MaterialPageRoute(builder: (_) => const ActivityPage()));
     } else if (option == "Payment") {
       Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const PaymentPage()),
-      );
+          context, MaterialPageRoute(builder: (_) => const PaymentPage()));
     }
+  }
+
+  // ✅ Strike dialog
+  void _showStrikeDialog(BuildContext context, int strikeDays) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        title: const Text('🔥 Strike Day!',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'You’re on a $strikeDays-day streak! 💪',
+              style: const TextStyle(fontSize: 18),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Awesome!'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      // Tapping outside search or suggestions removes focus → hides suggestions.
       onTap: () => FocusScope.of(context).unfocus(),
       child: Stack(
         children: [
-          // Main scrollable content.
           SingleChildScrollView(
-            padding: const EdgeInsets.only(
-              top: 24, // space for the custom header.
-              left: 16,
-              right: 16,
-              bottom: 16,
-            ),
+            padding:
+                const EdgeInsets.only(top: 24, left: 16, right: 16, bottom: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Welcome text.
                 const Text(
                   "Welcome back!",
                   style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF3C1E58),
-                  ),
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF3C1E58)),
                 ),
                 const SizedBox(height: 16),
-
-                // Search bar.
                 Container(
                   decoration: BoxDecoration(
                     color: const Color(0xFFF5F5F5),
@@ -163,13 +178,8 @@ class _HomeContentState extends State<HomeContent> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 8),
-
-                // The rest of your normal UI content...
                 const SizedBox(height: 24),
-
-                // Blue cards.
                 _buildBlueCard(context, "Lessons",
                     "lib/assets/images/lessons.png", "Your lessons"),
                 _buildBlueCard(context, "Projects",
@@ -183,13 +193,11 @@ class _HomeContentState extends State<HomeContent> {
               ],
             ),
           ),
-
-          // Suggestions panel (only show if _showSuggestions is true).
           if (_showSuggestions)
             Positioned(
               left: 16,
               right: 16,
-              top: 90, // position under the search bar
+              top: 90,
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 300),
                 decoration: BoxDecoration(
@@ -197,10 +205,9 @@ class _HomeContentState extends State<HomeContent> {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.grey.withOpacity(0.3),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
+                        color: Colors.grey.withOpacity(0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2)),
                   ],
                 ),
                 child: _filteredOptions.isEmpty
@@ -219,7 +226,6 @@ class _HomeContentState extends State<HomeContent> {
                             leading: Icon(option['icon'], color: Colors.blue),
                             title: Text(option['title']),
                             onTap: () {
-                              // Clear text, remove focus, hide suggestions.
                               _searchController.clear();
                               _focusNode.unfocus();
                               _navigateToOption(option['title']);
@@ -234,7 +240,6 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  // Helper method to build a blue card.
   static Widget _buildBlueCard(
     BuildContext context,
     String title,
@@ -245,33 +250,23 @@ class _HomeContentState extends State<HomeContent> {
       onTap: () {
         if (title == "Payment") {
           Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PaymentPage()),
-          );
+              context, MaterialPageRoute(builder: (_) => const PaymentPage()));
         }
         if (title == "Lessons") {
           Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CoursesPage()),
-          );
+              context, MaterialPageRoute(builder: (_) => const CoursesPage()));
         }
         if (title == "Projects") {
           Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ProjectsPage()),
-          );
+              context, MaterialPageRoute(builder: (_) => const ProjectsPage()));
         }
         if (title == "Certificates") {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CertificatesPage()),
-          );
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const CertificatesPage()));
         }
         if (title == "Activity") {
           Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const ActivityPage()),
-          );
+              context, MaterialPageRoute(builder: (_) => const ActivityPage()));
         }
       },
       child: Container(
@@ -282,15 +277,13 @@ class _HomeContentState extends State<HomeContent> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 6,
+                offset: const Offset(0, 3)),
           ],
         ),
         child: Row(
           children: [
-            // Left text.
             Expanded(
               flex: 2,
               child: Padding(
@@ -300,24 +293,17 @@ class _HomeContentState extends State<HomeContent> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Text(
-                          descriptionText,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white70,
-                          ),
-                        ),
+                        Text(descriptionText,
+                            style: const TextStyle(
+                                fontSize: 14, color: Colors.white70)),
                         const SizedBox(width: 8),
                         const Icon(Icons.arrow_right_alt, color: Colors.white),
                       ],
@@ -326,19 +312,16 @@ class _HomeContentState extends State<HomeContent> {
                 ),
               ),
             ),
-            // Right image.
             Expanded(
               flex: 1,
               child: Container(
                 padding: const EdgeInsets.all(12.0),
                 alignment: Alignment.center,
-                child: Image.asset(
-                  imagePath,
-                  height: 60,
-                  width: 60,
-                  color: Colors.white,
-                  fit: BoxFit.contain,
-                ),
+                child: Image.asset(imagePath,
+                    height: 60,
+                    width: 60,
+                    color: Colors.white,
+                    fit: BoxFit.contain),
               ),
             ),
           ],

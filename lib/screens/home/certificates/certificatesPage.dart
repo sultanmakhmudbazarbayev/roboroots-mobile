@@ -1,154 +1,98 @@
-import 'package:flutter/material.dart';
+// lib/screens/home/certificates_page.dart
 
-class CertificatesPage extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:roboroots/api/certificate_service.dart';
+import 'package:roboroots/api/api_service.dart';
+
+class CertificatesPage extends StatefulWidget {
   const CertificatesPage({Key? key}) : super(key: key);
 
-  // Dummy certificate data.
-  // Certificates from our platform.
-  final List<Map<String, dynamic>> platformCertificates = const [
-    {
-      'title': 'Flutter Development',
-      'course': 'Flutter for Beginners',
-      'organization': 'Other Platforms',
-      'givenDate': '2023-02-15',
-      'expiryDate': '2025-02-15',
-      'image': 'lib/assets/images/flutter_beginner_cert.png',
-    },
-    {
-      'title': 'Advanced Flutter',
-      'course': 'Advanced Flutter',
-      'organization': 'Our Platform',
-      'givenDate': '2023-06-01',
-      'expiryDate': '2025-06-01',
-      'image': 'lib/assets/images/flutter_advanced_cert.png',
-    },
-  ];
+  @override
+  State<CertificatesPage> createState() => _CertificatesPageState();
+}
 
-  // Certificates from other places.
-  final List<Map<String, dynamic>> externalCertificates = const [
-    {
-      'title': 'React Native Development',
-      'course': 'React Native Bootcamp',
-      'organization': 'Udemy',
-      'givenDate': '2022-11-20',
-      'expiryDate': '2024-11-20',
-      'image': 'lib/assets/images/react_native_cert.png',
-    },
-    {
-      'title': 'Python for Data Science',
-      'course': 'Python Data Science Course',
-      'organization': 'Coursera',
-      'givenDate': '2022-09-10',
-      'expiryDate': '2024-09-10',
-      'image': 'lib/assets/images/python_data_cert.png',
-    },
-  ];
+class _CertificatesPageState extends State<CertificatesPage> {
+  late Future<List<Map<String, dynamic>>> _futureCerts;
+
+  @override
+  void initState() {
+    super.initState();
+    _futureCerts = CertificateService().getUserCertificates();
+  }
+
+  Future<void> _openCertificate(String url) async {
+    final uri = Uri.parse(url);
+    if (!await canLaunchUrl(uri)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open certificate.')),
+      );
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text("Certificates",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            )),
+        title:
+            const Text('Certificates', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF4B6FFF),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          const Text(
-            "Certificates from our Platform",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          ...platformCertificates
-              .map((cert) => CertificateCard(certificate: cert))
-              .toList(),
-          const SizedBox(height: 40),
-          const Text(
-            "Certificates from Other Places",
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          ...externalCertificates
-              .map((cert) => CertificateCard(certificate: cert))
-              .toList(),
-        ],
-      ),
-    );
-  }
-}
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _futureCerts,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snap.hasError) {
+            return Center(child: Text('Error: ${snap.error}'));
+          }
+          final certs = snap.data!;
+          if (certs.isEmpty) {
+            return const Center(child: Text('No certificates yet.'));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: certs.length,
+            itemBuilder: (context, i) {
+              final c = certs[i];
+              final course = c['Course'] as Map<String, dynamic>?;
+              final issuedAt = c['info']?['issued_at'] ?? '';
+              final rawLink = c['url_link'] as String? ?? '';
+              final fullUrl = ApiService.baseUrl! + rawLink;
 
-class CertificateCard extends StatelessWidget {
-  final Map<String, dynamic> certificate;
-  const CertificateCard({Key? key, required this.certificate})
-      : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16.0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 3,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Certificate image with rounded top corners.
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-            ),
-            child: Image.asset(
-              certificate['image'],
-              width: double.infinity,
-              height: 150,
-              fit: BoxFit.cover,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Certificate title.
-                Text(
-                  certificate['title'],
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                const SizedBox(height: 8),
-                // Course information.
-                Text(
-                  "Course: ${certificate['course']}",
-                  style: const TextStyle(fontSize: 14),
+                elevation: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c['info']?['course_name'] ?? course?['name'] ?? '',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Issued: $issuedAt'),
+                      const SizedBox(height: 4),
+                      TextButton(
+                        onPressed: () => _openCertificate(fullUrl),
+                        child: const Text('View Certificate'),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 4),
-                // Organization.
-                Text(
-                  "Organization: ${certificate['organization']}",
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                // Given date.
-                Text(
-                  "Given on: ${certificate['givenDate']}",
-                  style: const TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 4),
-                // Expiry date.
-                Text(
-                  "Expires on: ${certificate['expiryDate']}",
-                  style: const TextStyle(fontSize: 14, color: Colors.redAccent),
-                ),
-              ],
-            ),
-          ),
-        ],
+              );
+            },
+          );
+        },
       ),
     );
   }

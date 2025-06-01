@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:roboroots/screens/home/activity/activityPage.dart';
 import 'package:roboroots/screens/home/certificates/certificatesPage.dart';
-import 'package:roboroots/screens/home/lessons/coursePage.dart';
+import 'package:roboroots/screens/home/lessons/course_page.dart';
 import 'package:roboroots/screens/home/projects/projectsPage.dart';
 import 'package:roboroots/screens/home/payment/paymentsPage.dart';
 

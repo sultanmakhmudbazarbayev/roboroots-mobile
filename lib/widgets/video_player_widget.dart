@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:roboroots/api/course_service.dart';
 
 class VideoPlayerWidget extends StatefulWidget {
+  final int lessonId;
   final String videoUrl;
   final VoidCallback? onSkipPrevious;
   final VoidCallback? onSkipNext;
@@ -12,6 +14,7 @@ class VideoPlayerWidget extends StatefulWidget {
 
   const VideoPlayerWidget({
     Key? key,
+    required this.lessonId,
     required this.videoUrl,
     this.onSkipPrevious,
     this.onSkipNext,
@@ -23,12 +26,16 @@ class VideoPlayerWidget extends StatefulWidget {
   VideoPlayerWidgetState createState() => VideoPlayerWidgetState();
 }
 
-// RENAMED to public class: VideoPlayerWidgetState
 class VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
   bool _isBuffering = false;
   bool _hasEnded = false;
+  double _lastSavedProgress = 0.0;
+
+  void pause() {
+    _videoPlayerController?.pause();
+  }
 
   @override
   void initState() {
@@ -44,49 +51,56 @@ class VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     super.dispose();
   }
 
-  /// Re-initialize the video with a new URL if needed.
   Future<void> _initializeVideo(String url) async {
     _videoPlayerController = VideoPlayerController.network(url);
     await _videoPlayerController!.initialize();
 
-    // Listen for buffering status.
     _videoPlayerController!.addListener(() {
-      final isPlaying = _videoPlayerController!.value.isPlaying;
-      final controllerBuffering = _videoPlayerController!.value.isBuffering;
-      if (isPlaying) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (_videoPlayerController!.value.isPlaying && _isBuffering) {
-            setState(() => _isBuffering = false);
-          }
-        });
-      } else {
-        if (controllerBuffering != _isBuffering) {
-          setState(() => _isBuffering = controllerBuffering);
+      final controllerValue = _videoPlayerController!.value;
+      final isPlaying = controllerValue.isPlaying;
+      final buffering = controllerValue.isBuffering;
+
+      // Buffering indicator
+      if (buffering != _isBuffering) {
+        setState(() => _isBuffering = buffering);
+      }
+
+      // Track end
+      _videoListener();
+
+      // Periodically save progress every 10%
+      if (isPlaying && controllerValue.duration.inMilliseconds > 0) {
+        final pos = controllerValue.position.inMilliseconds;
+        final dur = controllerValue.duration.inMilliseconds;
+        final fraction = pos / dur;
+        if ((fraction - _lastSavedProgress).abs() >= 0.1) {
+          _lastSavedProgress = fraction;
+          CourseService()
+              .saveLessonProgress(widget.lessonId, fraction)
+              .catchError((e) => debugPrint('Save progress failed: $e'));
         }
       }
     });
-
-    _hasEnded = false;
-    _videoPlayerController!.addListener(_videoListener);
 
     _chewieController = ChewieController(
       videoPlayerController: _videoPlayerController!,
       autoPlay: true,
       looping: false,
     );
-    setState(() {});
+
+    setState(() {
+      _hasEnded = false;
+    });
   }
 
-  /// Called each frame; checks if video ended & calls onSkipNext if it exists.
   void _videoListener() {
     if (_videoPlayerController == null ||
         !_videoPlayerController!.value.isInitialized) return;
 
-    final position = _videoPlayerController!.value.position;
-    final duration = _videoPlayerController!.value.duration;
-    if (!_hasEnded && position >= duration) {
+    final pos = _videoPlayerController!.value.position;
+    final dur = _videoPlayerController!.value.duration;
+    if (!_hasEnded && pos >= dur) {
       _hasEnded = true;
-      // If there's a next video, skip automatically; else just pause
       if (widget.hasNext && widget.onSkipNext != null) {
         widget.onSkipNext!();
       } else {
@@ -95,9 +109,7 @@ class VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     }
   }
 
-  /// Public method to load a new video URL.
   Future<void> loadVideoUrl(String newUrl) async {
-    // Dispose old
     _videoPlayerController?.removeListener(_videoListener);
     _chewieController?.dispose();
     _videoPlayerController?.dispose();
@@ -109,9 +121,9 @@ class VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   @override
   Widget build(BuildContext context) {
     if (_chewieController != null &&
-        _chewieController!.videoPlayerController.value.isInitialized) {
+        _videoPlayerController!.value.isInitialized) {
       return AspectRatio(
-        aspectRatio: _chewieController!.videoPlayerController.value.aspectRatio,
+        aspectRatio: _videoPlayerController!.value.aspectRatio,
         child: Stack(
           children: [
             Chewie(controller: _chewieController!),
@@ -122,7 +134,6 @@ class VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                   child: const Center(child: CircularProgressIndicator()),
                 ),
               ),
-            // Previous lesson button overlay.
             Positioned(
               left: 16,
               top: 0,
@@ -135,7 +146,6 @@ class VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                 ),
               ),
             ),
-            // Next lesson button overlay.
             Positioned(
               right: 16,
               top: 0,

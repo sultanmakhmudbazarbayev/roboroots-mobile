@@ -1,170 +1,189 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:roboroots/mock/course_data_mock.dart';
+import 'package:roboroots/api/api_service.dart';
+import 'package:roboroots/api/course_service.dart';
 import 'package:roboroots/screens/home/content/quiz_screen.dart';
-import 'package:roboroots/widgets/video_player_widget.dart'; // Make sure this file exists and implements VideoPlayerWidget
+import 'package:roboroots/widgets/video_player_widget.dart';
 
 class CourseDetailPage extends StatefulWidget {
-  final Course course;
-  const CourseDetailPage({Key? key, required this.course}) : super(key: key);
+  final int courseId;
+  const CourseDetailPage({Key? key, required this.courseId}) : super(key: key);
 
   @override
   State<CourseDetailPage> createState() => _CourseDetailPageState();
 }
 
 class _CourseDetailPageState extends State<CourseDetailPage> {
-  // Expanded state for each section (only applicable for lessons).
-  late List<bool> _expanded;
-  // A VideoPlayerWidget key per section (only used for lessons).
-  late List<GlobalKey<VideoPlayerWidgetState>> _playerKeys;
+  Map<String, dynamic>? _course;
+  List<bool> _expanded = [];
+  List<GlobalKey<VideoPlayerWidgetState>> _playerKeys = [];
+  bool _enrolled = false;
 
   @override
   void initState() {
     super.initState();
-    // Initialize expansion for each section. For quiz sections, this value is ignored.
-    _expanded = List.filled(widget.course.sections.length, false);
-    // Create a global key for each section (unused for quiz sections).
-    _playerKeys = List.generate(
-      widget.course.sections.length,
-      (index) => GlobalKey<VideoPlayerWidgetState>(),
-    );
+    _fetchCourse();
   }
 
-  void _startQuiz(String quizTitle) {
-    // Look up the quiz questions by quizTitle in quizMockData.
-    final quizQuestions = quizMockData[quizTitle];
-    if (quizQuestions != null) {
-      // Navigate to the quiz screen with the found questions.
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => QuizPage(
-            quizTitle: quizTitle,
-            questions: quizQuestions,
-          ),
-        ),
-      );
-    } else {
-      // If no quiz data is found, show a SnackBar or any other error message.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Quiz data for '$quizTitle' not found."),
-        ),
-      );
+  Future<void> _fetchCourse() async {
+    final course = await CourseService().getCourseById(widget.courseId);
+    final lessons = course['Lessons'] as List<dynamic>? ?? [];
+    setState(() {
+      _course = course;
+      _expanded = List.filled(lessons.length, false);
+      _playerKeys = List.generate(lessons.length, (_) => GlobalKey());
+    });
+  }
+
+  Future<void> _toggleEnroll() async {
+    final price = (_course!['price'] as num).toDouble();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Enroll Confirmation"),
+        content: Text("Enroll for \$${price.toStringAsFixed(2)}?"),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel")),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Enroll")),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await CourseService().enrollInCourse(widget.courseId);
+      setState(() => _enrolled = true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_course == null)
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final lessons = _course!['Lessons'] as List<dynamic>;
+
     return Scaffold(
-      appBar: AppBar(
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          widget.course.title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: Colors.blue,
-      ),
+      appBar:
+          AppBar(title: Text(_course!['name']), backgroundColor: Colors.blue),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Course image & info
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (_course!['image'] != null)
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.asset(
-                widget.course.imagePath,
+              child: Image.network(
+                '${ApiService.baseUrl}${_course!['image']}',
                 fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    const Center(child: Icon(Icons.broken_image)),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              widget.course.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          const SizedBox(height: 16),
+          Text(_course!['name'],
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(_course!['description'],
+              style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          const SizedBox(height: 8),
+          Text('Price: \$${(_course!['price'] as num).toStringAsFixed(2)}',
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green)),
+          const SizedBox(height: 12),
+          Center(
+            child: ElevatedButton.icon(
+              icon: Icon(_enrolled ? Icons.check : Icons.lock_open),
+              label: Text(_enrolled ? "Enrolled" : "Enroll Now"),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: _enrolled ? Colors.grey : Colors.blue),
+              onPressed: _enrolled ? null : _toggleEnroll,
             ),
-            const SizedBox(height: 4),
-            Text(
-              widget.course.subtitle,
-              style: const TextStyle(fontSize: 16, color: Colors.black54),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.course.description,
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "Course Sections",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            // List of course sections (lessons and quizzes)
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: widget.course.sections.length,
-              itemBuilder: (context, index) {
-                final section = widget.course.sections[index];
-                if (section.type == CourseSectionType.lesson) {
-                  // Lesson section with expandable video player.
-                  final isOpen = _expanded[index];
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          title: Text(section.title),
-                          subtitle: Text(section.description),
-                          leading: const Icon(Icons.play_circle_fill),
-                          trailing: Icon(
-                            isOpen
-                                ? Icons.arrow_drop_up
-                                : Icons.arrow_drop_down,
-                          ),
-                          onTap: () {
-                            setState(() {
-                              _expanded[index] = !_expanded[index];
-                            });
-                          },
-                        ),
-                        if (isOpen)
-                          AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: VideoPlayerWidget(
-                              key: _playerKeys[index],
-                              videoUrl: section.videoUrl!,
-                              hasPrevious: false,
-                              hasNext: false,
-                            ),
-                          ),
-                      ],
+          ),
+          const SizedBox(height: 24),
+          const Text("Course Content",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: lessons.length,
+            itemBuilder: (ctx, i) {
+              final lesson = lessons[i] as Map<String, dynamic>;
+              final isLocked = !_enrolled && i != 0;
+              final isOpen = _expanded[i];
+              final quiz = lesson['Quiz'] as Map<String, dynamic>?;
+
+              return Column(children: [
+                // video card
+                Card(
+                  color: isLocked ? Colors.grey.shade200 : null,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Column(children: [
+                    ListTile(
+                      leading: Icon(isLocked ? Icons.lock : Icons.play_circle),
+                      title: Text(lesson['name']),
+                      subtitle: Text(lesson['description'] ?? ''),
+                      trailing:
+                          Icon(isOpen ? Icons.expand_less : Icons.expand_more),
+                      onTap: isLocked
+                          ? null
+                          : () => setState(() => _expanded[i] = !isOpen),
                     ),
-                  );
-                } else if (section.type == CourseSectionType.quiz) {
-                  // Quiz section card.
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
+                    if (isOpen &&
+                        !isLocked &&
+                        (lesson['video_url'] as String?) != null)
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: VideoPlayerWidget(
+                          key: _playerKeys[i],
+                          lessonId: lesson['id'] as int,
+                          videoUrl: lesson['video_url'] as String,
+                          hasPrevious: false,
+                          hasNext: false,
+                        ),
+                      ),
+                  ]),
+                ),
+
+                // quiz: only show when index != 0 (i.e. hide for first)
+                if (!isLocked &&
+                    i != 0 &&
+                    quiz != null &&
+                    (quiz['Questions'] as List).isNotEmpty)
+                  Card(
                     color: Colors.orange.shade100,
+                    margin: const EdgeInsets.only(bottom: 16),
                     child: ListTile(
-                      title: Text(section.title),
-                      subtitle: Text(section.description),
                       leading: const Icon(Icons.quiz),
+                      title: Text(quiz['title']),
+                      subtitle:
+                          Text("Test your knowledge on “${lesson['name']}”"),
                       trailing: ElevatedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => QuizPage(
+                                lessonId: lesson['id'] as int,
+                                quizTitle: quiz['title'] as String,
+                                questions: List<Map<String, dynamic>>.from(
+                                    quiz['Questions'] as List),
+                              ),
+                            ),
+                          );
+                        },
                         child: const Text("Start Quiz"),
-                        onPressed: () => _startQuiz(section.title),
                       ),
                     ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ],
-        ),
+                  ),
+              ]);
+            },
+          ),
+        ]),
       ),
     );
   }

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'screens/intro/intro_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Configure test devices (replace with your device ID from the log or by calling AdRequest.testDevices)
@@ -12,6 +13,7 @@ void main() {
   MobileAds.instance.updateRequestConfiguration(requestConfiguration);
 
   MobileAds.instance.initialize(); // Initialize the Mobile Ads SDK
+  await dotenv.load(fileName: ".env");
   runApp(MyApp());
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:roboroots/mock/course_data_mock.dart';
+import 'package:roboroots/api/api_service.dart';
+import 'package:roboroots/api/course_service.dart';
 import 'package:roboroots/screens/home/content/course_details_page.dart';
 import 'package:roboroots/widgets/banner_ad_widget.dart';
 
@@ -15,16 +16,13 @@ class _CourseContentState extends State<CourseContent> {
   final FocusNode _focusNode = FocusNode();
 
   bool _showSuggestions = false;
-  late List<Course> _allCourses; // combined from recommended & topSearch
-  List<Course> _filteredCourses = []; // matches the user’s search text
+  List<Map<String, dynamic>> _allCourses = [];
+  List<Map<String, dynamic>> _filteredCourses = [];
 
   @override
   void initState() {
     super.initState();
-    // Combine recommended and topSearch courses into one list.
-    _allCourses = [...recommendedCourses, ...topSearchCourses];
-
-    // Listen for text changes & focus changes
+    _fetchCourses();
     _searchController.addListener(_onSearchChanged);
     _focusNode.addListener(_handleFocusChange);
   }
@@ -38,10 +36,19 @@ class _CourseContentState extends State<CourseContent> {
     super.dispose();
   }
 
+  Future<void> _fetchCourses() async {
+    try {
+      final service = CourseService();
+      final courses = await service.getAllCourses();
+      setState(() => _allCourses = courses);
+    } catch (e) {
+      debugPrint('Error loading courses: $e');
+    }
+  }
+
   void _handleFocusChange() {
     final hasFocus = _focusNode.hasFocus;
     if (!hasFocus) {
-      // If user taps outside, hide suggestions.
       setState(() => _showSuggestions = false);
     } else if (_searchController.text.trim().isNotEmpty) {
       setState(() => _showSuggestions = true);
@@ -56,11 +63,9 @@ class _CourseContentState extends State<CourseContent> {
         _showSuggestions = false;
       });
     } else {
-      // Filter courses by title or subtitle matching the query.
       final results = _allCourses.where((course) {
-        final t = course.title.toLowerCase();
-        final s = course.subtitle.toLowerCase();
-        return t.contains(query) || s.contains(query);
+        return course['name'].toLowerCase().contains(query) ||
+            course['description'].toLowerCase().contains(query);
       }).toList();
 
       setState(() {
@@ -70,34 +75,29 @@ class _CourseContentState extends State<CourseContent> {
     }
   }
 
-  void _navigateToCourse(Course course) {
-    // Clear search & hide suggestions.
+  void _navigateToCourse(Map<String, dynamic> course) {
     _searchController.clear();
     FocusScope.of(context).unfocus();
     setState(() => _showSuggestions = false);
-
-    // Navigate to course details.
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => CourseDetailPage(course: course)),
+      MaterialPageRoute(
+          builder: (_) => CourseDetailPage(courseId: course['id'])),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      // Tapping outside the search field/suggestions unfocuses search.
       onTap: () => FocusScope.of(context).unfocus(),
       child: Stack(
         children: [
-          // Main scrollable content.
           SingleChildScrollView(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title (centered).
                 const Center(
                   child: Text(
                     "Courses",
@@ -109,8 +109,6 @@ class _CourseContentState extends State<CourseContent> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Search bar.
                 Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
@@ -143,7 +141,7 @@ class _CourseContentState extends State<CourseContent> {
                   ),
                 ),
 
-                // "Recommended for You" section.
+                // "Recommended" - using first 4
                 Text(
                   "Recommended for You",
                   style: TextStyle(
@@ -153,32 +151,23 @@ class _CourseContentState extends State<CourseContent> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Display 2 recommended blocks per row.
-                for (int i = 0; i < recommendedCourses.length; i += 2)
+                for (int i = 0; i < _allCourses.length && i < 4; i += 2)
                   Row(
                     children: [
                       Expanded(
-                        child: _buildRecommendationCard(
-                          context,
-                          recommendedCourses[i],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      if (i + 1 < recommendedCourses.length)
-                        Expanded(
                           child: _buildRecommendationCard(
-                            context,
-                            recommendedCourses[i + 1],
-                          ),
-                        )
+                              context, _allCourses[i])),
+                      const SizedBox(width: 16),
+                      if (i + 1 < _allCourses.length)
+                        Expanded(
+                            child: _buildRecommendationCard(
+                                context, _allCourses[i + 1]))
                       else
                         const Spacer(),
                     ],
                   ),
                 const SizedBox(height: 24),
 
-                // "Top Searches" section.
                 Text(
                   "Top Searches",
                   style: TextStyle(
@@ -188,34 +177,27 @@ class _CourseContentState extends State<CourseContent> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Horizontal list of topSearchCourses.
                 SizedBox(
                   height: 180,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: topSearchCourses.length,
+                    itemCount: _allCourses.length,
                     itemBuilder: (context, index) {
-                      final course = topSearchCourses[index];
-                      return _buildHorizontalItem(context, course);
+                      return _buildHorizontalItem(context, _allCourses[index]);
                     },
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Insert BannerAdWidget here.
                 Center(child: BannerAdWidget()),
                 const SizedBox(height: 24),
               ],
             ),
           ),
-
-          // Suggestions overlay.
           if (_showSuggestions && _filteredCourses.isNotEmpty)
             Positioned(
               left: 16,
               right: 16,
-              top: 120, // Position below the search bar.
+              top: 120,
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 300),
                 decoration: BoxDecoration(
@@ -236,8 +218,8 @@ class _CourseContentState extends State<CourseContent> {
                   itemBuilder: (context, index) {
                     final c = _filteredCourses[index];
                     return ListTile(
-                      title: Text(c.title),
-                      subtitle: Text(c.subtitle),
+                      title: Text(c['name']),
+                      subtitle: Text(c['description']),
                       onTap: () => _navigateToCourse(c),
                     );
                   },
@@ -249,8 +231,8 @@ class _CourseContentState extends State<CourseContent> {
     );
   }
 
-  // A recommendation card with image on top, text below.
-  Widget _buildRecommendationCard(BuildContext context, Course course) {
+  Widget _buildRecommendationCard(
+      BuildContext context, Map<String, dynamic> course) {
     return GestureDetector(
       onTap: () => _navigateToCourse(course),
       child: Container(
@@ -272,15 +254,15 @@ class _CourseContentState extends State<CourseContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top: Image.
               Expanded(
                 flex: 3,
-                child: Image.asset(
-                  course.imagePath,
+                child: Image.network(
+                  '${ApiService.baseUrl}${course['image']}', // optionally prefix with BASE_URL
                   fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const Center(child: Icon(Icons.broken_image)),
                 ),
               ),
-              // Bottom: Text info.
               Expanded(
                 flex: 2,
                 child: Container(
@@ -290,21 +272,19 @@ class _CourseContentState extends State<CourseContent> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        course.title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
+                      Text(course['name'],
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          )),
                       const SizedBox(height: 4),
-                      Text(
-                        course.subtitle,
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 14,
-                        ),
-                      ),
+                      Text(course['description'],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 14,
+                          )),
                     ],
                   ),
                 ),
@@ -316,8 +296,8 @@ class _CourseContentState extends State<CourseContent> {
     );
   }
 
-  // A horizontal item block for "top searches."
-  Widget _buildHorizontalItem(BuildContext context, Course course) {
+  Widget _buildHorizontalItem(
+      BuildContext context, Map<String, dynamic> course) {
     return GestureDetector(
       onTap: () => _navigateToCourse(course),
       child: Container(
@@ -337,40 +317,38 @@ class _CourseContentState extends State<CourseContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Top image.
             Expanded(
               flex: 3,
               child: ClipRRect(
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(16)),
-                child: Image.asset(
-                  course.imagePath,
+                child: Image.network(
+                  '${ApiService.baseUrl}${course['image']}',
                   fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const Center(child: Icon(Icons.broken_image)),
                 ),
               ),
             ),
-            // Bottom text.
             Expanded(
               flex: 2,
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Column(
                   children: [
-                    Text(
-                      course.title,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
+                    Text(course['name'],
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(
-                      course.subtitle,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text(course['description'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
+                        )),
                   ],
                 ),
               ),

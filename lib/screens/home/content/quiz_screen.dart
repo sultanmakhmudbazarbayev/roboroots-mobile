@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:roboroots/mock/course_data_mock.dart';
+import 'package:roboroots/api/course_service.dart';
 
 class QuizPage extends StatefulWidget {
+  final int lessonId;
   final String quizTitle;
-  final List<QuizQuestion> questions;
+  final List<dynamic> questions;
 
-  const QuizPage({Key? key, required this.quizTitle, required this.questions})
-      : super(key: key);
+  const QuizPage({
+    Key? key,
+    required this.lessonId,
+    required this.quizTitle,
+    required this.questions,
+  }) : super(key: key);
 
   @override
   _QuizPageState createState() => _QuizPageState();
@@ -15,6 +20,7 @@ class QuizPage extends StatefulWidget {
 class _QuizPageState extends State<QuizPage> {
   late List<int> _selectedAnswers;
   bool _submitted = false;
+  int _score = 0;
 
   @override
   void initState() {
@@ -22,33 +28,47 @@ class _QuizPageState extends State<QuizPage> {
     _selectedAnswers = List<int>.filled(widget.questions.length, -1);
   }
 
-  void _submitQuiz() {
-    setState(() {
-      _submitted = true;
-    });
+  Future<void> _submitQuiz() async {
+    setState(() => _submitted = true);
+
     int score = 0;
     for (int i = 0; i < widget.questions.length; i++) {
-      if (_selectedAnswers[i] == widget.questions[i].correctOptionIndex) {
-        score++;
-      }
+      final question = widget.questions[i] as Map<String, dynamic>;
+      final answers = question['Answers'] as List<dynamic>;
+      final correctIndex = answers.indexWhere((a) => a['is_correct'] == true);
+      if (_selectedAnswers[i] == correctIndex) score++;
     }
+    setState(() => _score = score);
+
+    // send result to backend
+    try {
+      await CourseService().submitQuizResult(widget.lessonId, _score);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save result: $e')),
+      );
+    }
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Quiz Result"),
-        content: Text("Your score: $score / ${widget.questions.length}"),
+      builder: (_) => AlertDialog(
+        title: const Text('Quiz Result'),
+        content: Text('Your score: $_score / ${widget.questions.length}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text("OK"),
-          )
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildQuestion(int index) {
-    final question = widget.questions[index];
+    final question = widget.questions[index] as Map<String, dynamic>;
+    final answers = question['Answers'] as List<dynamic>;
+    final correctIndex = answers.indexWhere((a) => a['is_correct'] == true);
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8),
       child: Padding(
@@ -57,41 +77,32 @@ class _QuizPageState extends State<QuizPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Question ${index + 1}: ${question.question}",
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              "Question ${index + 1}: ${question['text']}",
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            Column(
-              children: List.generate(question.options.length, (optionIndex) {
-                bool isSelected = _selectedAnswers[index] == optionIndex;
-                bool isCorrect = question.correctOptionIndex == optionIndex;
-                Color? tileColor;
-                if (_submitted) {
-                  if (isSelected) {
-                    tileColor =
-                        isCorrect ? Colors.green.shade100 : Colors.red.shade100;
-                  } else if (isCorrect) {
-                    tileColor = Colors.green.shade100;
-                  }
+            ...List.generate(answers.length, (optIndex) {
+              final isSelected = _selectedAnswers[index] == optIndex;
+              final isCorrect = correctIndex == optIndex;
+              Color? tileColor;
+              if (_submitted) {
+                if (isSelected) {
+                  tileColor =
+                      isCorrect ? Colors.green.shade100 : Colors.red.shade100;
+                } else if (isCorrect) {
+                  tileColor = Colors.green.shade100;
                 }
-                return RadioListTile<int>(
-                  value: optionIndex,
-                  groupValue: _selectedAnswers[index],
-                  onChanged: _submitted
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _selectedAnswers[index] = value!;
-                          });
-                        },
-                  title: Text(question.options[optionIndex]),
-                  tileColor: tileColor,
-                );
-              }),
-            )
+              }
+              return RadioListTile<int>(
+                value: optIndex,
+                groupValue: _selectedAnswers[index],
+                onChanged: _submitted
+                    ? null
+                    : (v) => setState(() => _selectedAnswers[index] = v!),
+                title: Text(answers[optIndex]['text'] as String),
+                tileColor: tileColor,
+              );
+            }),
           ],
         ),
       ),
@@ -117,13 +128,12 @@ class _QuizPageState extends State<QuizPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            ...List.generate(
-                widget.questions.length, (index) => _buildQuestion(index)),
+            for (var i = 0; i < widget.questions.length; i++) _buildQuestion(i),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _submitted ? null : _submitQuiz,
-              child: const Text("Submit Quiz"),
-            )
+              child: const Text('Submit Quiz'),
+            ),
           ],
         ),
       ),
