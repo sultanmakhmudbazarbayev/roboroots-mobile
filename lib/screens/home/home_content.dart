@@ -36,7 +36,7 @@ class _HomeContentState extends State<HomeContent> {
     _focusNode.addListener(_handleFocusChange);
     _searchController.addListener(_handleSearchChanged);
 
-    debugResetStrikeAnimation();
+    // debugResetStrikeAnimation();
 
     // ✅ Strike animation on open
     WidgetsBinding.instance.addPostFrameCallback((_) {

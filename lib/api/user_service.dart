@@ -56,4 +56,23 @@ class UserService extends ApiService {
       throw Exception('Failed to fetch notifications: ${response.body}');
     }
   }
+
+  Future<String> chatbot(String input) async {
+    final response = await post(
+      'api/chatbot', // Change if your endpoint differs!
+      {'input': input}, // The body as a Map, will be JSON encoded
+      withAuth: true, // If you need user to be authenticated
+    );
+
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      if (body['reply'] != null) {
+        return body['reply'] as String;
+      } else {
+        throw Exception('Invalid response format: ${response.body}');
+      }
+    } else {
+      throw Exception('Failed to get chatbot reply: ${response.body}');
+    }
+  }
 }

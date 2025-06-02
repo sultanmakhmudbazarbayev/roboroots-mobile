@@ -65,8 +65,12 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
     final lessons = _course!['Lessons'] as List<dynamic>;
 
     return Scaffold(
-      appBar:
-          AppBar(title: Text(_course!['name']), backgroundColor: Colors.blue),
+      appBar: AppBar(
+        iconTheme: const IconThemeData(color: Colors.white),
+        title:
+            Text(_course!['name'], style: const TextStyle(color: Colors.white)),
+        backgroundColor: Colors.blue,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -97,7 +101,8 @@ class _CourseDetailPageState extends State<CourseDetailPage> {
           Center(
             child: ElevatedButton.icon(
               icon: Icon(_enrolled ? Icons.check : Icons.lock_open),
-              label: Text(_enrolled ? "Enrolled" : "Enroll Now"),
+              label: Text(_enrolled ? "Enrolled" : "Enroll Now",
+                  style: const TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                   backgroundColor: _enrolled ? Colors.grey : Colors.blue),
               onPressed: _enrolled ? null : _toggleEnroll,

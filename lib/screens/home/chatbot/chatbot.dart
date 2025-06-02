@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
-import 'dart:convert'; // For jsonEncode and jsonDecode
-import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:roboroots/api/user_service.dart'; // <-- Adjust path as needed
 
 class ChatMessage {
   final String message;
   final bool isUser;
 
   ChatMessage({required this.message, this.isUser = true});
+
+  Map<String, dynamic> toJson() => {
+        'message': message,
+        'isUser': isUser,
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        message: json['message'],
+        isUser: json['isUser'] ?? true,
+      );
 }
 
 class ChatbotScreen extends StatefulWidget {
@@ -19,67 +30,72 @@ class ChatbotScreen extends StatefulWidget {
 class _ChatbotScreenState extends State<ChatbotScreen> {
   final List<ChatMessage> _messages = [];
   final TextEditingController _controller = TextEditingController();
-
-  // Replace with your API endpoint URL.
-  final String apiUrl = 'https://robo.responcy.net/chatbot';
+  bool _isBotTyping = false;
 
   @override
   void initState() {
     super.initState();
-    // Add the initial bot message.
-    _messages.add(ChatMessage(
-      message: "Hello, I'm here to help!",
-      isUser: false,
-    ));
+    _loadMessages().then((_) {
+      if (_messages.isEmpty) {
+        setState(() {
+          _messages.add(ChatMessage(
+            message: "Hello, I'm here to help!",
+            isUser: false,
+          ));
+        });
+        _saveMessages();
+      }
+    });
   }
 
-  // This function is triggered when the user taps the send button.
+  Future<void> _saveMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = _messages.map((m) => jsonEncode(m.toJson())).toList();
+    await prefs.setStringList('chat_messages', data);
+  }
+
+  Future<void> _loadMessages() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? data = prefs.getStringList('chat_messages');
+    if (data != null) {
+      setState(() {
+        _messages.clear();
+        _messages.addAll(data.map((str) {
+          final map = jsonDecode(str);
+          return ChatMessage.fromJson(map);
+        }));
+      });
+    }
+  }
+
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
     setState(() {
-      // Add the user message.
       _messages.add(ChatMessage(message: text, isUser: true));
-      // Show the typing indicator.
-      _messages.add(ChatMessage(message: "Bot is typing...", isUser: false));
+      _isBotTyping = true;
     });
     _controller.clear();
+    await _saveMessages();
 
     try {
-      // Make the POST request sending the user input in the request body.
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'input': text}),
-      );
+      final reply = await UserService().chatbot(text);
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final reply = data['reply'] ?? 'Sorry, no reply received.';
-        setState(() {
-          // Remove the typing indicator and add the actual bot reply.
-          _messages.removeWhere((msg) => msg.message == "Bot is typing...");
-          _messages.add(ChatMessage(message: reply, isUser: false));
-        });
-      } else {
-        setState(() {
-          _messages.removeWhere((msg) => msg.message == "Bot is typing...");
-          _messages.add(ChatMessage(
-              message:
-                  "Error: Server returned status code ${response.statusCode}",
-              isUser: false));
-        });
-      }
+      setState(() {
+        _isBotTyping = false;
+        _messages.add(ChatMessage(message: reply, isUser: false));
+      });
+      await _saveMessages();
     } catch (e) {
       setState(() {
-        _messages.removeWhere((msg) => msg.message == "Bot is typing...");
+        _isBotTyping = false;
         _messages.add(ChatMessage(message: "Error: $e", isUser: false));
       });
+      await _saveMessages();
     }
   }
 
-  // Builds a chat bubble for a given message.
   Widget _buildMessage(ChatMessage message) {
     final alignment =
         message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
@@ -119,20 +135,24 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // Display the messages.
           Expanded(
             child: ListView.builder(
               reverse: true,
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_isBotTyping ? 1 : 0),
               itemBuilder: (context, index) {
-                // Reverse the list to show the most recent message at the bottom.
-                final message = _messages[_messages.length - 1 - index];
+                if (_isBotTyping && index == 0) {
+                  return _buildMessage(
+                    ChatMessage(message: "Bot is typing...", isUser: false),
+                  );
+                }
+                final msgIdx =
+                    _messages.length - 1 - (index - (_isBotTyping ? 1 : 0));
+                final message = _messages[msgIdx];
                 return _buildMessage(message);
               },
             ),
           ),
           const Divider(height: 1),
-          // Input field and send button.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
@@ -144,6 +164,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       hintText: "Enter your message...",
                       border: OutlineInputBorder(),
                     ),
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
                 IconButton(
